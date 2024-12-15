@@ -32,30 +32,55 @@ class CLIPVisionTower(nn.Module):
 
         self.is_loaded = True
 
-    def feature_select(self, image_forward_outs):
+    # def feature_select(self, image_forward_outs):
+    #     image_features = image_forward_outs.hidden_states[self.select_layer]
+    #     if self.select_feature == 'patch':
+    #         image_features = image_features[:, 1:]
+    #     elif self.select_feature == 'cls_patch':
+    #         image_features = image_features
+    #     else:
+    #         raise ValueError(f'Unexpected select feature: {self.select_feature}')
+    #     return image_features
+    
+    def feature_select_withcls(self, image_forward_outs):
         image_features = image_forward_outs.hidden_states[self.select_layer]
-        if self.select_feature == 'patch':
-            image_features = image_features[:, 1:]
-        elif self.select_feature == 'cls_patch':
-            image_features = image_features
-        else:
-            raise ValueError(f'Unexpected select feature: {self.select_feature}')
+        image_features = image_features
         return image_features
-
     @torch.no_grad()
     def forward(self, images):
         if type(images) is list:
             image_features = []
             for image in images:
                 image_forward_out = self.vision_tower(image.to(device=self.device, dtype=self.dtype).unsqueeze(0), output_hidden_states=True)
-                image_feature = self.feature_select(image_forward_out).to(image.dtype)
+                image_feature = self.feature_select_withcls(image_forward_out).to(image.dtype)
                 image_features.append(image_feature)
         else:
             image_forward_outs = self.vision_tower(images.to(device=self.device, dtype=self.dtype), output_hidden_states=True)
-            image_features = self.feature_select(image_forward_outs).to(images.dtype)
+            image_features = self.feature_select_withcls(image_forward_outs).to(images.dtype)
 
         return image_features
+    def forward_select(self, images, token_num):
+        if type(images) is list:
+            image_features = []
+            for image in images:
+                image_forward_out = self.vision_tower(image.to(device=self.device, dtype=self.dtype).unsqueeze(0), output_hidden_states=True)
+                image_feature = self.feature_select_withcls(image_forward_out).to(image.dtype)
+                image_features.append(image_feature)
+        else:
+            image_forward_outs = self.vision_tower(images.to(device=self.device, dtype=self.dtype), output_hidden_states=True, output_attentions=True)
+            attn_weights  = image_forward_outs.attentions[-2]
+            hidden_states = image_forward_outs.hidden_states[-2]
+            dominant_num =  token_num
 
+            ## Dominant Visual Tokens
+            cls_idx = 0
+            cls_attention = attn_weights[:, :, cls_idx, cls_idx+1:]  
+            cls_attention_sum = cls_attention.sum(dim=1)  
+            topk_indices = cls_attention_sum.topk(dominant_num, dim=1).indices 
+            
+            topk_indices_sorted = torch.sort(topk_indices, dim=1).values
+
+        return topk_indices_sorted
     @property
     def dummy_feature(self):
         return torch.zeros(1, self.hidden_size, device=self.device, dtype=self.dtype)

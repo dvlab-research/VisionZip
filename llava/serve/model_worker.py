@@ -118,6 +118,29 @@ class ModelWorker:
             "speed": 1,
             "queue_length": self.get_queue_length(),
         }
+    @torch.inference_mode()
+    def get_visionzip_dominant(self,params):
+        
+        tokenizer, model, image_processor = self.tokenizer, self.model, self.image_processor
+        images = params.get("images", None)
+        token_num = params.get("token_num",None)
+        if images is not None and len(images) > 0 and self.is_multimodal:
+            images = [load_image_from_base64(image) for image in images]
+            image_sizes = [image.size for image in images]
+            images = process_images(images, image_processor, model.config)
+            if type(images) is list:
+                images = [image.to(self.model.device, dtype=torch.float16) for image in images]
+            else:
+                images = images.to(self.model.device, dtype=torch.float16)
+            
+            vision_tower = model.get_model().get_vision_tower()
+            token_idx = vision_tower.forward_select(images, token_num)
+            token_idx_list = token_idx.cpu().tolist()  
+        
+        
+        return {
+            "token_idx": token_idx_list
+        }
 
     @torch.inference_mode()
     def generate_stream(self, params):
@@ -160,6 +183,8 @@ class ModelWorker:
         max_context_length = getattr(model.config, 'max_position_embeddings', 2048)
         max_new_tokens = min(int(params.get("max_new_tokens", 256)), 1024)
         stop_str = params.get("stop", None)
+        select_tokens =  params.get("select_tokens",[])
+        cls_flag = params.get("cls_flag",False)
         do_sample = True if temperature > 0.001 else False
 
         input_ids = tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).to(self.device)
@@ -181,6 +206,8 @@ class ModelWorker:
             max_new_tokens=max_new_tokens,
             streamer=streamer,
             use_cache=True,
+            select_tokens =select_tokens,
+            cls_flag = cls_flag,
             **image_args
         ))
         thread.start()
@@ -243,6 +270,22 @@ async def generate_stream(request: Request):
     background_tasks.add_task(partial(release_model_semaphore, fn=worker.send_heart_beat))
     return StreamingResponse(generator, background=background_tasks)
 
+
+@app.post("/worker_get_visonzip")
+async def get_visonzip(request: Request):
+    global model_semaphore, global_counter
+    global_counter += 1
+    params = await request.json()
+
+    if model_semaphore is None:
+        model_semaphore = asyncio.Semaphore(args.limit_model_concurrency)
+    await model_semaphore.acquire()
+    try:
+        worker.send_heart_beat()
+        results = worker.get_visionzip_dominant(params)
+        return results
+    finally:
+        release_model_semaphore(fn=worker.send_heart_beat)
 
 @app.post("/worker_get_status")
 async def get_status(request: Request):

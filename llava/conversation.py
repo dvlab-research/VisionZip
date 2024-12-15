@@ -154,19 +154,25 @@ class Conversation:
         for i, (role, msg) in enumerate(self.messages[self.offset:]):
             if i % 2 == 0:
                 if type(msg) is tuple:
-                    msg, image, image_process_mode = msg
+                    msg, image_show, image, image_process_mode = msg
                     image = self.process_image(image, image_process_mode, return_pil=return_pil)
                     images.append(image)
         return images
 
+    def get_images_visionzip(self, image, return_pil=False):
+        images = []
+
+        image = self.process_image(image, "Default", return_pil=return_pil)
+        images.append(image)
+        return images
     def to_gradio_chatbot(self):
         ret = []
         for i, (role, msg) in enumerate(self.messages[self.offset:]):
             if i % 2 == 0:
                 if type(msg) is tuple:
-                    msg, image, image_process_mode = msg
+                    msg, image_show, image, image_process_mode = msg
                     img_b64_str = self.process_image(
-                        image, "Default", return_pil=False,
+                        image_show, "Default", return_pil=False,
                         image_format='JPEG')
                     img_str = f'<img src="data:image/jpeg;base64,{img_b64_str}" alt="user upload image" />'
                     msg = img_str + msg.replace('<image>', '').strip()
