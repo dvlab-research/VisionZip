@@ -1,12 +1,35 @@
 # Python
-*.pyc
 __pycache__
+*.pyc
+*.egg-info
+dist
 
-# Virtual environment
-venv/
-env/
+# Log
+*.log
+*.log.*
+*.json
+*.jsonl
 
-# Distribution / packaging
-*.egg-info/
-dist/
-build/
+# Data
+!**/alpaca-data-conversation.json
+
+# Editor
+.idea
+*.swp
+
+# Other
+.DS_Store
+wandb
+output
+
+checkpoints
+ckpts*
+
+.ipynb_checkpoints
+*.ipynb
+
+# DevContainer
+!.devcontainer/*
+
+# Demo
+serve_images/
